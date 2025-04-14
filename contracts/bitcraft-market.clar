@@ -140,3 +140,63 @@
             (ok minted-assets))
 	)
 )
+
+;; Transfer Functions
+
+;; Transfer asset ownership
+(define-public (transfer-asset (asset-id uint) (recipient principal))
+    (begin
+        (asserts! (<= asset-id (var-get asset-counter)) err-invalid-input)
+        (let ((asset (try! (get-asset-checked asset-id))))
+            (asserts! (and
+                    (is-eq (get owner asset) tx-sender)
+                    (get transferable asset)
+                    (not (is-eq recipient tx-sender)))
+                err-not-authorized)
+            (map-set assets
+                { asset-id: asset-id }
+                { owner: recipient,
+                  metadata-uri: (get metadata-uri asset),
+                  transferable: (get transferable asset) })
+            (ok true))
+	)
+)
+
+;; Batch Transfer assets
+(define-public (batch-transfer-assets 
+    (asset-ids (list 10 uint)) 
+    (recipients (list 10 principal)))
+    (begin
+        (asserts! (and 
+            (> (len asset-ids) u0)
+            (<= (len asset-ids) max-batch-size)
+            (is-eq (len asset-ids) (len recipients))) 
+            err-invalid-input)
+        (let ((transfers 
+            (map transfer-single-asset 
+                asset-ids 
+                recipients)))
+            (ok transfers))
+	)
+)
+
+;; Marketplace Functions
+
+;; List asset for sale with enhanced marketplace listing
+(define-public (list-asset-for-sale (asset-id uint) (price uint))
+    (begin
+        (asserts! (<= asset-id (var-get asset-counter)) err-invalid-input)
+        (let ((asset (try! (get-asset-checked asset-id))))
+            (asserts! (and 
+                    (is-eq (get owner asset) tx-sender)
+                    (> price u0)
+                    (get transferable asset))
+                err-invalid-price)
+            (map-set marketplace-listings
+                { asset-id: asset-id }
+                { seller: tx-sender, 
+                  price: price, 
+                  listed-at: stacks-block-height })
+            (ok true))
+	)
+)
