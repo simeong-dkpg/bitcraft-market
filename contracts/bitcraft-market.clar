@@ -66,3 +66,77 @@
             (<= uri-length max-metadata-length))
 	)
 )
+
+;; Helper function for batch minting
+(define-private (mint-single-asset 
+    (uri (string-utf8 256))
+    (transferable bool))
+    (let 
+        ((asset-id (+ (var-get asset-counter) u1)))
+        (asserts! (validate-metadata-uri uri) err-invalid-input)
+        (map-set assets
+            { asset-id: asset-id }
+            { owner: contract-owner,
+              metadata-uri: uri,
+              transferable: transferable })
+        (var-set asset-counter asset-id)
+        (ok asset-id)
+	)
+)
+
+;; Helper function for batch transfer
+(define-private (transfer-single-asset
+    (asset-id uint)
+    (recipient principal))
+    (let 
+        ((asset (unwrap-panic (get-asset-checked asset-id))))
+        (asserts! (and
+                (is-eq (get owner asset) tx-sender)
+                (get transferable asset)
+                (not (is-eq recipient tx-sender)))
+            err-not-authorized)
+        (map-set assets
+            { asset-id: asset-id }
+            { owner: recipient,
+              metadata-uri: (get metadata-uri asset),
+              transferable: (get transferable asset) })
+        (ok true)
+	)
+)
+
+;; Minting Functions
+
+;; Mint single asset
+(define-public (mint-asset (metadata-uri (string-utf8 256)) (transferable bool))
+    (let
+        ((asset-id (+ (var-get asset-counter) u1)))
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (validate-metadata-uri metadata-uri) err-invalid-input)
+        (map-set assets
+            { asset-id: asset-id }
+            { owner: tx-sender,
+              metadata-uri: metadata-uri,
+              transferable: transferable })
+        (var-set asset-counter asset-id)
+        (ok asset-id)
+	)
+)
+
+;; Batch Mint new gaming assets
+(define-public (batch-mint-assets 
+    (metadata-uris (list 10 (string-utf8 256))) 
+    (transferable-list (list 10 bool)))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (and 
+            (> (len metadata-uris) u0)
+            (<= (len metadata-uris) max-batch-size)
+            (is-eq (len metadata-uris) (len transferable-list))) 
+            err-invalid-input)
+        (let ((minted-assets 
+            (map mint-single-asset 
+                metadata-uris 
+                transferable-list)))
+            (ok minted-assets))
+	)
+)
