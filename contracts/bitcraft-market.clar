@@ -200,3 +200,72 @@
             (ok true))
 	)
 )
+
+;; Purchase listed asset with enhanced marketplace mechanics
+(define-public (purchase-asset (asset-id uint))
+    (begin
+        (asserts! (<= asset-id (var-get asset-counter)) err-invalid-input)
+        (let
+            ((asset (try! (get-asset-checked asset-id)))
+             (listing (unwrap! (map-get? marketplace-listings { asset-id: asset-id }) err-not-found)))
+            (asserts! (and
+                    (not (is-eq (get seller listing) tx-sender))
+                    (get transferable asset))
+                err-not-authorized)
+            (try! (stx-transfer? (get price listing) tx-sender (get seller listing)))
+            (map-set assets
+                { asset-id: asset-id }
+                { owner: tx-sender,
+                  metadata-uri: (get metadata-uri asset),
+                  transferable: (get transferable asset) })
+            (map-delete marketplace-listings { asset-id: asset-id })
+            (ok true))
+	)
+)
+
+;; Remove asset from marketplace listing
+(define-public (delist-asset (asset-id uint))
+    (begin
+        ;; Validate asset-id is within the range of minted assets
+        (asserts! (<= asset-id (var-get asset-counter)) err-invalid-input)
+
+        ;; Try to get the listing, return error if not found
+        (let ((listing (unwrap! (map-get? marketplace-listings { asset-id: asset-id }) err-not-found)))
+            ;; Ensure only the seller can delist
+            (asserts! (is-eq tx-sender (get seller listing)) err-not-authorized)
+
+            ;; Delete the marketplace listing
+            (map-delete marketplace-listings { asset-id: asset-id })
+
+            ;; Return success
+            (ok true))
+	)
+)
+
+;; Player Stats Functions
+
+;; Update player stats with validation
+(define-public (update-player-stats (experience uint) (level uint))
+    (begin
+        (asserts! (<= experience max-experience) err-invalid-input)
+        (asserts! (<= level max-level) err-invalid-input)
+        (map-set player-stats
+            { player: tx-sender }
+            { experience: experience, level: level })
+        (ok true)
+	)
+)
+
+;; Read-only Functions
+
+;; Get asset details
+(define-read-only (get-asset-details (asset-id uint))
+    (if (<= asset-id (var-get asset-counter))
+        (map-get? assets { asset-id: asset-id })
+        none)
+)
+
+;; Get marketplace listing details
+(define-read-only (get-marketplace-listing (asset-id uint))
+    (map-get? marketplace-listings { asset-id: asset-id })
+)
